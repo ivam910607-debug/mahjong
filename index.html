@@ -389,7 +389,7 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
     </div>
     <div class="panel" id="installPanel">
       <h3>放到手機桌面</h3>
-      <p class="hint" id="installNote">放到桌面後，點圖示就能直接打開，像一般 App 一樣。</p>
+      <p class="hint" id="installNote">放到桌面後，點圖示會直接用 LINE 打開，不用再登入。</p>
       <button class="ghost" id="installBtn">放到手機桌面</button>
     </div>
     <button class="ghost" id="copyLink">複製這一桌的連結</button>
@@ -588,17 +588,11 @@ async function start(){
   catch(e){bootMsg("LINE 連線失敗","LIFF ID 可能貼錯，或這個網址和 LINE 後台填的 Endpoint URL 不一樣。（"+(e.message||e)+"）");return}
   const params=new URLSearchParams(location.search);
   if(params.get("install")==="1"&&!isStandalone()){
-    bootMsg("放到手機桌面","照著下面的步驟做，桌面就會出現麻將結算的圖示。",[["看步驟",installHelp,"primary"],["先直接用",()=>{history.replaceState(null,"",APP_URL);start()}]]);
+    bootMsg("放到手機桌面","照著下面的步驟做，桌面就會出現麻將結算的圖示。",[["看步驟",installHelp,"primary"],["回到 LINE",()=>{location.href="https://liff.line.me/"+LIFF_ID}]]);
     installHelp();return;
   }
+  if(isStandalone()&&!liff.isLoggedIn()){showLauncher();return}
   if(!liff.isLoggedIn()){
-    if(isStandalone()){
-      // 從桌面圖示打開：可以直接跳去 LINE 開，或在這裡登入一次
-      bootMsg("歡迎使用麻將結算","第一次從桌面打開，要先用 LINE 登入一次，之後就不用了。",[
-        ["用 LINE 登入",()=>liff.login({redirectUri:location.href}),"primary"],
-        ["改用 LINE App 打開",()=>{location.href="https://liff.line.me/"+LIFF_ID}]]);
-      return;
-    }
     liff.login({redirectUri:location.href});return;
   }
   try{const p=await liff.getProfile();me={uid:p.userId,name:p.displayName||"玩家",pic:p.pictureUrl||""}}
@@ -610,7 +604,16 @@ async function start(){
   }catch(e){bootMsg("資料庫連線失敗","請確認 Firebase 的「匿名」登入已啟用，設定整段有貼對。（"+(e.code||e.message||e)+"）");return}
   const q=params.get("room");
   if(q)openRoom(q.toUpperCase());
-  else{const last=lastRoomId();if(isStandalone()&&last)openRoom(last);else showLobby()}
+  else{const last=lastRoomId();if(last)openRoom(last);else showLobby()}
+}
+
+/* 從桌面圖示打開：交給 LINE App，用 LINE 裡已經登入的身分，不用再登入 */
+function showLauncher(){
+  show("boot");
+  $("bootTitle").textContent="麻將結算";
+  $("bootMsg").textContent="點下面的按鈕，會直接用 LINE 打開，不用再登入。";
+  $("bootAct").innerHTML=`<a class="big-btn" id="launchLine" href="https://liff.line.me/${LIFF_ID}" style="display:block;text-align:center;text-decoration:none">用 LINE 打開麻將結算</a>
+    <p class="hint" style="flex-basis:100%">如果沒有跳到 LINE，請確認手機有裝 LINE，再點一次。</p>`;
 }
 
 /* ================= 大廳 ================= */
@@ -936,13 +939,13 @@ function installHelp(){
     steps.innerHTML=`<li>LINE 裡面沒辦法直接加到桌面，要先換到手機的瀏覽器。</li><li>按下面的「用瀏覽器打開」，會開到 ${isIOS()?"Safari":"Chrome"}。</li><li>在瀏覽器裡照著畫面的步驟做。</li>`;
     go.hidden=false;go.textContent="用瀏覽器打開";go.onclick=()=>liff.openWindow({url:APP_URL+"?install=1",external:true});
   }else if(deferredPrompt){
-    steps.innerHTML="<li>按下面的「加到桌面」。</li><li>跳出視窗後按「安裝」。</li><li>桌面會出現麻將結算的圖示。</li>";
+    steps.innerHTML="<li>按下面的「加到桌面」。</li><li>跳出視窗後按「安裝」。</li><li>桌面會出現麻將結算的圖示。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
     go.hidden=false;go.textContent="加到桌面";
     go.onclick=async()=>{const p=deferredPrompt;if(!p)return;p.prompt();const r=await p.userChoice;deferredPrompt=null;if(r.outcome==="accepted")$("installSheet").hidden=true};
   }else if(isIOS()){
-    steps.innerHTML="<li>確認是用 <b>Safari</b> 打開這一頁（其他瀏覽器不行）。</li><li>按畫面下方中間的<b>分享</b>按鈕（方框加向上箭頭）。</li><li>往下滑，按<b>「加入主畫面」</b>，再按右上角<b>「新增」</b>。</li>";
+    steps.innerHTML="<li>確認是用 <b>Safari</b> 打開這一頁（其他瀏覽器不行）。</li><li>按畫面下方中間的<b>分享</b>按鈕（方框加向上箭頭）。</li><li>往下滑，按<b>「加入主畫面」</b>，再按右上角<b>「新增」</b>。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
   }else{
-    steps.innerHTML="<li>用 <b>Chrome</b> 打開這一頁。</li><li>按右上角的 <b>⋮</b> 選單。</li><li>按<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>，再按「安裝」。</li>";
+    steps.innerHTML="<li>用 <b>Chrome</b> 打開這一頁。</li><li>按右上角的 <b>⋮</b> 選單。</li><li>按<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>，再按「安裝」。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
   }
   $("installSheet").hidden=false;
 }
