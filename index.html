@@ -158,6 +158,9 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
 .boot h3{font-size:1.05rem}
 .hello{display:flex;align-items:center;gap:12px}
 .hello img,.hello .ph{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--line);flex:none}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30;display:flex;align-items:flex-end;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.sheet-in{width:100%;max-width:560px}
+.sheet textarea{resize:none;font-size:.88rem;line-height:1.5}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.85rem;z-index:20;max-width:calc(100% - 32px);text-align:center}
 </style>
 </head>
@@ -296,6 +299,20 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
       </div>
       <button class="ghost" id="toLobby">離開這一桌</button>
     </div>
+  </div>
+</div>
+
+<!-- 分享面板：LINE 分享視窗開不起來時才會出現 -->
+<div class="sheet" id="shareSheet" hidden>
+  <div class="panel sheet-in">
+    <h3>傳到 LINE</h3>
+    <p class="hint" id="shareNote"></p>
+    <textarea class="inp" id="shareText" rows="5" readonly></textarea>
+    <div class="row">
+      <button class="ghost" id="shareCopy">複製文字</button>
+      <a class="line-btn" id="shareOpen" href="#" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">打開 LINE 分享</a>
+    </div>
+    <button class="ghost" id="shareClose">關閉</button>
   </div>
 </div>
 <script>
@@ -701,16 +718,31 @@ async function copyText(text,okMsg){
   try{await navigator.clipboard.writeText(text);toast(okMsg);return true}catch(e){}
   try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();
     const ok=document.execCommand("copy");ta.remove();if(ok){toast(okMsg);return true}}catch(e){}
-  toast("無法自動複製，連結是："+text);return false;
+  showShareBox(text,"沒辦法自動複製，請長按下面的文字選取後複製。");return false;
+}
+const lineShareUrl=text=>"https://line.me/R/share?text="+encodeURIComponent(text);
+function showShareBox(text,note){
+  $("shareText").value=text;
+  $("shareNote").textContent=note||"";
+  $("shareOpen").href=lineShareUrl(text);
+  $("shareSheet").hidden=false;
 }
 async function shareToLine(text){
-  try{
-    if(liff.isApiAvailable&&liff.isApiAvailable("shareTargetPicker")){
+  // 1. LINE 內建的「選擇好友／群組」視窗（手機 LINE 裡最順）
+  if(liff.isApiAvailable&&liff.isApiAvailable("shareTargetPicker")){
+    try{
       const res=await liff.shareTargetPicker([{type:"text",text}],{isMultiple:true});
-      if(res)toast("已傳送到 LINE");return;
-    }
-  }catch(e){}
-  await copyText(text,"已複製，請貼到 LINE 群組");
+      if(res)toast("已傳送到 LINE");
+      return;
+    }catch(e){console.warn("shareTargetPicker 無法開啟",e)}
+  }
+  // 2. LINE 的分享頁
+  const url=lineShareUrl(text);
+  try{if(liff.isInClient()){liff.openWindow({url,external:false});return}}catch(e){}
+  let w=null;try{w=window.open(url,"_blank")}catch(e){}
+  if(w)return;
+  // 3. 都不行就跳出可以複製的面板
+  showShareBox(text,"這個瀏覽器沒辦法直接打開 LINE 分享，請複製後貼到 LINE 群組。");
 }
 
 /* ================= 分頁 ================= */
@@ -732,6 +764,14 @@ $("seatAct").addEventListener("click",e=>{const b=e.target.closest("[data-act]")
 $("inviteBtn").addEventListener("click",()=>shareToLine(`【麻將結算】我開了一桌（桌號 ${roomId}），點連結用 LINE 入座：\n${roomLink()}`));
 $("copyLink").addEventListener("click",()=>copyText(roomLink(),"連結已複製，貼到 LINE 群組就能邀請"));
 $("shareResult").addEventListener("click",()=>shareToLine(resultText()));
+$("shareClose").addEventListener("click",()=>$("shareSheet").hidden=true);
+$("shareSheet").addEventListener("click",e=>{if(e.target.id==="shareSheet")$("shareSheet").hidden=true});
+$("shareCopy").addEventListener("click",async()=>{
+  const ta=$("shareText");
+  try{await navigator.clipboard.writeText(ta.value);toast("已複製，貼到 LINE 群組就行");return}catch(e){}
+  ta.focus();ta.select();try{if(document.execCommand("copy")){toast("已複製，貼到 LINE 群組就行");return}}catch(e){}
+  toast("請長按文字，選「全選」後複製");
+});
 document.querySelectorAll("#tab-settle select,#tab-settle input").forEach(el=>el.addEventListener("change",onSetup));
 $("resType").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const d=draft;
   d.type=b.dataset.v;
