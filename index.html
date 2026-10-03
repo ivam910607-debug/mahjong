@@ -386,7 +386,7 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
         <label class="full">起莊（第一局的莊家）<select id="selStart"></select></label>
         <label>目前風圈<select id="selRound"><option value="0">東風圈</option><option value="1">南風圈</option><option value="2">西風圈</option><option value="3">北風圈</option></select></label>
         <label>目前莊家<select id="selDealer"></select></label>
-        <label>連莊次數<input id="inStreak" type="number" inputmode="numeric" min="0" max="20"></label>
+        <label>連莊次數<select id="inStreak"></select></label>
         <label>莊家台<select id="selDealerRule"><option value="std">莊 1 台＋連 N 拉 N</option><option value="none">不算莊家台</option></select></label>
       </div>
       <p class="hint">記錄每一局時會自動換莊、換風圈。這裡只在需要手動修正時用。設定同桌共用。</p>
@@ -851,7 +851,9 @@ function fillSetup(){
   $("selDealer").innerHTML=$("selStart").innerHTML;
   $("selStart").value=st.start;$("selDealer").value=g.dealer;
   $("selRound").value=Math.min(g.round,3);$("selDealerRule").value=st.dealerRule;
-  if(document.activeElement!==$("inStreak"))$("inStreak").value=g.streak;
+  const top=Math.max(12,g.streak),std=st.dealerRule!=="none";
+  $("inStreak").innerHTML=Array.from({length:top+1},(_,n)=>`<option value="${n}">${n?"連 "+n:"沒有連莊"}${std?`（莊家 ${1+2*n} 台）`:""}</option>`).join("");
+  $("inStreak").value=g.streak;
   const key=st.base+"/"+st.per,sel=$("selStake");
   const has=[...sel.options].some(o=>o.value===key);
   sel.value=(!customStake&&has)?key:"custom";
