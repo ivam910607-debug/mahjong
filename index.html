@@ -169,6 +169,10 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30;display:flex;align-items:flex-end;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
 .sheet-in{width:100%;max-width:560px}
 .sheet textarea{resize:none;font-size:.88rem;line-height:1.5}
+.launcher{position:fixed;inset:0;z-index:60;background:#1f5a45;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-decoration:none;text-align:center;padding:24px;font-family:var(--f-body)}
+.launcher img{width:96px;height:96px;border-radius:22px}
+.launcher b{font-family:var(--f-tile);font-size:1.6rem;letter-spacing:.06em}
+.launcher span{font-size:.92rem;opacity:.85;line-height:1.6}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.85rem;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 /* ===== 簡化版介面 ===== */
@@ -402,6 +406,7 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
   <div class="panel sheet-in">
     <h3>放到手機桌面</h3>
     <ol class="install-steps" id="installSteps"></ol>
+    <div id="installImgBox" hidden style="text-align:center"><img src="icon-512.png" alt="麻將結算圖示" style="width:96px;height:96px;border-radius:22px"><p class="hint">長按圖片可以存到照片</p></div>
     <button class="primary" id="installGo" hidden></button>
     <button class="ghost" id="installClose">知道了</button>
   </div>
@@ -584,6 +589,7 @@ async function start(){
   if(typeof LIFF_ID!=="string"||!LIFF_ID||LIFF_ID.includes("請貼上")||!firebaseConfig||!firebaseConfig.projectId){
     bootMsg("還沒完成設定","請把 LIFF ID 和 Firebase 設定貼到 index.html 最上面的設定區。");return}
   if(!window.liff||!window.firebase){bootMsg("載入失敗","網路可能不穩，請關掉重新打開。",[["重新整理",()=>location.reload()]]);return}
+  if(isStandalone()){showLauncher();return}
   try{await liff.init({liffId:LIFF_ID})}
   catch(e){bootMsg("LINE 連線失敗","LIFF ID 可能貼錯，或這個網址和 LINE 後台填的 Endpoint URL 不一樣。（"+(e.message||e)+"）");return}
   const params=new URLSearchParams(location.search);
@@ -591,7 +597,6 @@ async function start(){
     bootMsg("放到手機桌面","照著下面的步驟做，桌面就會出現麻將結算的圖示。",[["看步驟",installHelp,"primary"],["回到 LINE",()=>{location.href="https://liff.line.me/"+LIFF_ID}]]);
     installHelp();return;
   }
-  if(isStandalone()&&!liff.isLoggedIn()){showLauncher();return}
   if(!liff.isLoggedIn()){
     liff.login({redirectUri:location.href});return;
   }
@@ -607,13 +612,14 @@ async function start(){
   else{const last=lastRoomId();if(last)openRoom(last);else showLobby()}
 }
 
-/* 從桌面圖示打開：交給 LINE App，用 LINE 裡已經登入的身分，不用再登入 */
+/* 從桌面圖示打開：直接交給 LINE App，用 LINE 裡已經登入的身分，不用再登入 */
+const isAndroid=()=>/android/i.test(navigator.userAgent);
+const liffUrl=()=>"https://liff.line.me/"+LIFF_ID;
+function lineAppUrl(){return isAndroid()?`intent://liff.line.me/${LIFF_ID}#Intent;scheme=https;package=jp.naver.line.android;end`:liffUrl()}
 function showLauncher(){
-  show("boot");
-  $("bootTitle").textContent="麻將結算";
-  $("bootMsg").textContent="點下面的按鈕，會直接用 LINE 打開，不用再登入。";
-  $("bootAct").innerHTML=`<a class="big-btn" id="launchLine" href="https://liff.line.me/${LIFF_ID}" style="display:block;text-align:center;text-decoration:none">用 LINE 打開麻將結算</a>
-    <p class="hint" style="flex-basis:100%">如果沒有跳到 LINE，請確認手機有裝 LINE，再點一次。</p>`;
+  if(!$("launchLine"))document.body.insertAdjacentHTML("beforeend",`<a id="launchLine" class="launcher" href="${lineAppUrl()}"><img src="icon-192.png" alt=""><b>麻將結算</b><span>正在打開 LINE…<br>沒有跳過去的話，點一下畫面任何地方</span></a>`);
+  // Android 會自動跳到 LINE；被手機擋下時，點畫面任何地方都可以
+  if(isAndroid())setTimeout(()=>{try{location.href=lineAppUrl()}catch(e){}},120);
 }
 
 /* ================= 大廳 ================= */
@@ -933,19 +939,29 @@ let deferredPrompt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e});
 window.addEventListener("appinstalled",()=>{deferredPrompt=null;toast("已放到桌面")});
 function installHelp(){
-  const steps=$("installSteps"),go=$("installGo");go.hidden=true;go.onclick=null;
+  const steps=$("installSteps"),go=$("installGo");go.hidden=true;go.onclick=null;$("installImgBox").hidden=true;
+  const done="<li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
   if(isStandalone()){steps.innerHTML="<li>你已經是從桌面圖示打開的，不用再加。</li>"}
+  else if(isIOS()){
+    // iPhone 用內建的「捷徑」App，點圖示會直接開 LINE
+    steps.innerHTML=`<li>先按下面的<b>「複製連結」</b>。</li>
+      <li>打開 iPhone 內建的<b>「捷徑」</b>App，按右上角 <b>＋</b>。</li>
+      <li>按<b>「加入動作」</b>，搜尋<b>「打開 URL」</b>，點它。</li>
+      <li>點藍色的<b>「URL」</b>，貼上剛剛複製的連結。</li>
+      <li>點最上面的捷徑名稱，選<b>「重新命名」</b>，打「麻將結算」。</li>
+      <li>再點一次名稱，選<b>「加入主畫面」</b>，按右上角<b>「加入」</b>。想換成下面這個圖示，先長按圖片存到照片，再在這一步點圖示選它。</li>`+done;
+    go.hidden=false;go.textContent="複製連結";go.onclick=()=>copyText(liffUrl(),"已複製，到「捷徑」App 貼上");
+    $("installImgBox").hidden=false;
+  }
   else if(inLine()){
-    steps.innerHTML=`<li>LINE 裡面沒辦法直接加到桌面，要先換到手機的瀏覽器。</li><li>按下面的「用瀏覽器打開」，會開到 ${isIOS()?"Safari":"Chrome"}。</li><li>在瀏覽器裡照著畫面的步驟做。</li>`;
-    go.hidden=false;go.textContent="用瀏覽器打開";go.onclick=()=>liff.openWindow({url:APP_URL+"?install=1",external:true});
+    steps.innerHTML=`<li>LINE 裡面沒辦法直接加到桌面，要先換到 Chrome。</li><li>按下面的「用 Chrome 打開」。</li><li>在 Chrome 裡照著畫面的步驟做。</li>`;
+    go.hidden=false;go.textContent="用 Chrome 打開";go.onclick=()=>liff.openWindow({url:APP_URL+"?install=1",external:true});
   }else if(deferredPrompt){
-    steps.innerHTML="<li>按下面的「加到桌面」。</li><li>跳出視窗後按「安裝」。</li><li>桌面會出現麻將結算的圖示。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
+    steps.innerHTML="<li>按下面的「加到桌面」。</li><li>跳出視窗後按「安裝」。</li>"+done;
     go.hidden=false;go.textContent="加到桌面";
     go.onclick=async()=>{const p=deferredPrompt;if(!p)return;p.prompt();const r=await p.userChoice;deferredPrompt=null;if(r.outcome==="accepted")$("installSheet").hidden=true};
-  }else if(isIOS()){
-    steps.innerHTML="<li>確認是用 <b>Safari</b> 打開這一頁（其他瀏覽器不行）。</li><li>按畫面下方中間的<b>分享</b>按鈕（方框加向上箭頭）。</li><li>往下滑，按<b>「加入主畫面」</b>，再按右上角<b>「新增」</b>。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
   }else{
-    steps.innerHTML="<li>用 <b>Chrome</b> 打開這一頁。</li><li>按右上角的 <b>⋮</b> 選單。</li><li>按<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>，再按「安裝」。</li><li>以後點桌面上的「中」字圖示，會直接用 LINE 打開，不用再登入。</li>";
+    steps.innerHTML="<li>用 <b>Chrome</b> 打開這一頁。</li><li>按右上角的 <b>⋮</b> 選單。</li><li>按<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>，再按「安裝」。</li>"+done;
   }
   $("installSheet").hidden=false;
 }

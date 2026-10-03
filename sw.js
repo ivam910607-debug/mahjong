@@ -1,6 +1,6 @@
 // 麻將結算：讓手機可以把網頁「安裝」到桌面。
 // 每次都先抓最新版，只有在沒網路時才用上次存下來的頁面。
-const CACHE = "mahjong-v2";
+const CACHE = "mahjong-v3";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-180.png"];
 
 self.addEventListener("install", e => {
