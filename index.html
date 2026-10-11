@@ -1120,7 +1120,7 @@ $("ctxEdit").addEventListener("click",()=>{$("ctxForm").hidden=!$("ctxForm").hid
 }));
 
 /* ================= 拍照算台數（用你 Firebase 專案裡的 Gemini） ================= */
-const FB_VER="13.0.0",AI_MODELS=["gemini-3.8-flash","gemini-3.5-flash"];
+const FB_VER="13.0.0",AI_MODELS=["gemini-3.5-flash","gemini-3.5-flash-lite"];
 const NO_PHOTO=["haidi","hedi","gangshang","qianggang","tianhu","dihu","renhu","zimo"];
 let aiApi=null,photoBusy=false;
 async function loadAI(){
@@ -1137,7 +1137,7 @@ async function loadAI(){
     hua:S.integer(),huagang:S.integer(),
     confidence:S.enumString({enum:["high","medium","low"]}),
     note:S.string({description:"一句話說明看不清楚或不確定的地方"})}});
-  aiApi={ai,getModel:name=>aiMod.getGenerativeModel(ai,{model:name,generationConfig:{responseMimeType:"application/json",responseSchema:schema,temperature:0.1}})};
+  aiApi={ai,getModel:name=>aiMod.getGenerativeModel(ai,{model:name,generationConfig:{responseMimeType:"application/json",responseSchema:schema,temperature:0.1}},{timeout:45000})};
   return aiApi;
 }
 function photoPrompt(d){
@@ -1182,7 +1182,7 @@ async function recognize(base64,d){
     try{
       const res=await api.getModel(name).generateContent([photoPrompt(d),{inlineData:{data:base64,mimeType:"image/jpeg"}}]);
       return JSON.parse(res.response.text());
-    }catch(e){lastErr=e;const m=String(e&&e.message||e);if(!/not found|not supported|404|unavailable|permission|model/i.test(m))break}
+    }catch(e){lastErr=e;const m=String(e&&e.message||e);if(!/not found|not supported|404|503|unavailable|deadline|timeout|abort|fetch-error|overloaded|model/i.test(m))break}
   }
   throw lastErr;
 }
