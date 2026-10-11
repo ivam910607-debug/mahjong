@@ -18,6 +18,9 @@
 // ① LINE 的 LIFF ID（已經填好了，不用改）
 const LIFF_ID = "2011846960-UQV783za";
 
+// ③ 拍照算台用的防盜用金鑰（已經填好了，不用改）
+const RECAPTCHA_KEY = "6Lfs3uktAAAAABr8wVf3nrRwYX1hZiguOPhYlyey";
+
 // ② Firebase 設定（已經填好了，不用改）
 const firebaseConfig = {
   apiKey: "AIzaSyAP943K7vN-F13wN9G0AfU_oZ46jO7eSMk",
@@ -173,6 +176,21 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
 .launcher img{width:96px;height:96px;border-radius:22px}
 .launcher b{font-family:var(--f-tile);font-size:1.6rem;letter-spacing:.06em}
 .launcher span{font-size:.92rem;opacity:.85;line-height:1.6}
+.ctx{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.ctx-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700;font-size:.95rem}
+.ctx-edit{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 12px;font-weight:700;font-size:.85rem;cursor:pointer;flex:none}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.photo{display:flex;flex-direction:column;gap:10px}
+.photo-btn{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--felt);color:var(--felt-ink);border-radius:14px;padding:16px;font-weight:700;font-size:1.05rem;cursor:pointer}
+.photo-btn .cam{width:22px;height:17px;border:2px solid currentColor;border-radius:4px;position:relative;flex:none}
+.photo-btn .cam::after{content:"";position:absolute;width:7px;height:7px;border:2px solid currentColor;border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%)}
+.photo-btn:focus-within{outline:3px solid var(--warn);outline-offset:2px}
+.photo-btn.busy{opacity:.55;pointer-events:none}
+.photo-res{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+.photo-res img{width:84px;height:84px;object-fit:cover;border-radius:9px;border:1px solid var(--line);flex:none}
+.photo-txt{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;font-size:.88rem;line-height:1.5}
+.photo-txt .ok{color:var(--win);font-weight:700}
+.photo-txt .bad{color:var(--lose);font-weight:700}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.85rem;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 /* ===== 簡化版介面 ===== */
@@ -280,6 +298,14 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
 <div class="view" id="vRecord" hidden>
   <div class="view-in">
     <div class="view-head"><button class="back" id="recBack">‹ 上一步</button><h2 id="recTitle">記錄這一局</h2><div class="dots" id="recDots"><i></i><i></i><i></i><i></i></div></div>
+    <div class="ctx" id="ctxBar">
+      <div class="ctx-row"><span id="ctxText"></span><button class="ctx-edit" id="ctxEdit">修改</button></div>
+      <div class="form" id="ctxForm" hidden>
+        <label>圈風<select id="ctxRound"><option value="0">東風</option><option value="1">南風</option><option value="2">西風</option><option value="3">北風</option></select></label>
+        <label>莊家<select id="ctxDealer"></select></label>
+        <label class="full">連莊<select id="ctxStreak"></select></label>
+      </div>
+    </div>
 
     <!-- 1 誰胡 -->
     <div class="stack" id="st1">
@@ -303,6 +329,20 @@ details summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted
     <!-- 3 幾台 -->
     <div class="stack" id="st3" hidden>
       <p class="q">幾台？</p>
+      <div class="photo" id="photoBox">
+        <label class="photo-btn" id="photoLabel">
+          <input type="file" id="photoInput" accept="image/*" capture="environment" class="vh">
+          <span class="cam" aria-hidden="true"></span><span>拍胡牌的牌，自動算台數</span>
+        </label>
+        <div class="photo-res" id="photoRes" hidden>
+          <img id="photoImg" alt="剛拍的牌">
+          <div class="photo-txt">
+            <div id="photoStatus"></div>
+            <div class="hint" id="photoTiles" style="white-space:pre-wrap"></div>
+            <button class="ghost" id="photoRetry" hidden>重拍</button>
+          </div>
+        </div>
+      </div>
       <div class="taibox"><button id="taiMinus" aria-label="減一台">−</button><span class="num" id="taiNum">0</span><span class="unit">台</span><button id="taiPlus" aria-label="加一台">＋</button></div>
       <p class="hint" style="text-align:center" id="taiNote">知道幾台就直接按 ＋／−。莊家台會自動加，不用算進來。</p>
       <div class="panel">
@@ -752,11 +792,12 @@ function seatChoice(i,sel,disabled,sub){
 }
 function startRecord(){
   if(R.seats.filter(Boolean).length<2){toast("至少要兩個人入座才能記錄");return}
-  draft=blankDraft();step=1;showView("vRecord");
+  draft=blankDraft();step=1;$("ctxForm").hidden=true;resetPhoto();showView("vRecord");
 }
 function goStep(n){step=n;renderRecordView();$("vRecord").scrollTop=0}
 function renderRecordView(){
   const d=draft,g=R.game,base=mySeat()>=0?mySeat():0;
+  renderCtx();
   ["st1","st2","st3","st4"].forEach((s,k)=>$(s).hidden=k+1!==step);
   $("recDots").querySelectorAll("i").forEach((e,k)=>e.classList.toggle("on",k<step));
   $("recBack").textContent=step===1?"‹ 返回":"‹ 上一步";
@@ -1059,6 +1100,137 @@ $("newGame").addEventListener("click",()=>{
   $("ngYes").onclick=()=>{box.hidden=true;txReset(room=>({hands:[],game:{round:0,dealer:room.setup.start,streak:0}}),"已清空戰績")};
   $("ngNo").onclick=()=>box.hidden=true;
 });
+
+/* ================= 牌局資訊：圈風／莊家／連莊（記錄時隨時可改） ================= */
+function renderCtx(){
+  const g=R.game,st=R.setup;
+  $("ctxText").textContent=`${roundLabel(g.round,g.dealer,st.start)}局・莊 ${nm(g.dealer)}${g.streak?"・連 "+g.streak:""}`;
+  if($("ctxForm").hidden)return;
+  $("ctxRound").value=Math.min(g.round,3);
+  $("ctxDealer").innerHTML=[0,1,2,3].map(i=>`<option value="${i}"${R.seats[i]?"":" disabled"}>${esc(nm(i))}</option>`).join("");
+  $("ctxDealer").value=g.dealer;
+  const top=Math.max(12,g.streak),std=st.dealerRule!=="none";
+  $("ctxStreak").innerHTML=Array.from({length:top+1},(_,n)=>`<option value="${n}">${n?"連 "+n:"沒有連莊"}${std?`（莊家 ${1+2*n} 台）`:""}</option>`).join("");
+  $("ctxStreak").value=g.streak;
+}
+$("ctxEdit").addEventListener("click",()=>{$("ctxForm").hidden=!$("ctxForm").hidden;$("ctxEdit").textContent=$("ctxForm").hidden?"修改":"收起";renderCtx()});
+["ctxRound","ctxDealer","ctxStreak"].forEach(id=>$(id).addEventListener("change",async e=>{
+  const v=+e.target.value,key={ctxRound:"game.round",ctxDealer:"game.dealer",ctxStreak:"game.streak"}[id];
+  try{await ref.update({[key]:v,updatedAt:ts()});toast("已更新，同桌都會跟著變")}catch(err){toast("儲存失敗，請檢查網路")}
+}));
+
+/* ================= 拍照算台數（用你 Firebase 專案裡的 Gemini） ================= */
+const FB_VER="13.0.0",AI_MODELS=["gemini-3.8-flash","gemini-3.5-flash"];
+const NO_PHOTO=["haidi","hedi","gangshang","qianggang","tianhu","dihu","renhu","zimo"];
+let aiApi=null,photoBusy=false;
+async function loadAI(){
+  if(aiApi)return aiApi;
+  const base=`https://www.gstatic.com/firebasejs/${FB_VER}/`;
+  const [appMod,checkMod,aiMod]=await Promise.all([import(base+"firebase-app.js"),import(base+"firebase-app-check.js"),import(base+"firebase-ai.js")]);
+  const app=appMod.getApps().find(a=>a.name==="ai")||appMod.initializeApp(firebaseConfig,"ai");
+  checkMod.initializeAppCheck(app,{provider:new checkMod.ReCaptchaEnterpriseProvider(RECAPTCHA_KEY),isTokenAutoRefreshEnabled:true});
+  const ai=aiMod.getAI(app,{backend:new aiMod.GoogleAIBackend()});
+  const S=aiMod.Schema;
+  const schema=S.object({properties:{
+    tiles:S.string({description:"照片裡辨識到的牌，依序列出"}),
+    items:S.array({items:S.string()}),
+    hua:S.integer(),huagang:S.integer(),
+    confidence:S.enumString({enum:["high","medium","low"]}),
+    note:S.string({description:"一句話說明看不清楚或不確定的地方"})}});
+  aiApi={ai,getModel:name=>aiMod.getGenerativeModel(ai,{model:name,generationConfig:{responseMimeType:"application/json",responseSchema:schema,temperature:0.1}})};
+  return aiApi;
+}
+function photoPrompt(d){
+  const g=R.game,mwIdx=seatWind(d.winner,g.dealer),qw=W[Math.min(g.round,3)];
+  const list=TAI.filter(x=>x.id&&!NO_PHOTO.includes(x.id)).map(x=>{
+    let n=x.name;if(x.dyn==="q")n=`圈風刻（${qw}風三張）`;if(x.dyn==="m")n=`門風刻（${W[mwIdx]}風三張）`;
+    return `${x.id}：${n}，${x.v}台。${x.ds}`}).join("\n");
+  return `這是一張台灣十六張麻將胡牌的照片，拍的是胡牌者攤開的整副牌：16 張加上胡的那張，可能還有吃、碰、槓攤出來的牌和花牌。
+
+已知資訊：
+- 胡牌方式：${d.type==="zimo"?"自摸":"放槍（胡別人打出的牌）"}
+- 圈風：${qw}
+- 胡牌者的門風：${W[mwIdx]}，他的正花是「${["春","夏","秋","冬"][mwIdx]}」和「${["梅","蘭","竹","菊"][mwIdx]}」
+
+請先逐張辨識照片裡的牌，再判斷符合下列哪些台數項目。items 只能放這些 id：
+${list}
+
+規則：
+- 同一類只能選一個：an3/an4/an5、hun/qing/zi、xsy/dsy、xsx/dsx、duting/bian/kan/diao、baxian/qiqiang。
+- 選了小三元或大三元，就不要再選 zhong、fa、bai。選了小四喜或大四喜，就不要再選 quanfeng、menfeng。
+- menqing 只有在完全看不到吃、碰、明槓攤出來的牌時才選（攤出來的牌通常橫放、倒下或放在一旁）。
+- 能看出胡的是哪一張、而且原本只聽那一張時，才選 bian、kan 或 diao；看得出是獨聽但分不清哪種就選 duting；看不出來就都不要選。
+- 暗刻要確定是手中自己摸齊的，碰出來攤著的不算。不確定就不要選暗刻。
+- 平胡要全是順子、沒有字牌、沒有花，並且聽兩面。
+- hua 是正花的張數（0 到 2），huagang 是湊滿一組四張花的組數（0 到 2）。
+- 不確定的寧可不選，在 note 說明。
+- 照片裡看不出是麻將牌時，items 回空陣列、confidence 填 low，並在 note 說明。`;
+}
+async function shrinkImage(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
+    const max=1600,sc=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*sc);c.height=Math.round(img.naturalHeight*sc);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    return c.toDataURL("image/jpeg",0.85).split(",")[1];
+  }finally{URL.revokeObjectURL(url)}
+}
+async function recognize(base64,d){
+  const api=await loadAI();let lastErr=null;
+  for(const name of AI_MODELS){
+    try{
+      const res=await api.getModel(name).generateContent([photoPrompt(d),{inlineData:{data:base64,mimeType:"image/jpeg"}}]);
+      return JSON.parse(res.response.text());
+    }catch(e){lastErr=e;const m=String(e&&e.message||e);if(!/not found|not supported|404|unavailable|permission|model/i.test(m))break}
+  }
+  throw lastErr;
+}
+function applyPhoto(r){
+  const d=draft,items={};if(d.type==="zimo")items.zimo=1;
+  const used=new Set();
+  for(const id of (Array.isArray(r.items)?r.items:[]).map(String)){
+    const x=TAIBY[id];if(!x||NO_PHOTO.includes(id))continue;
+    if(x.g){if(used.has(x.g))continue;used.add(x.g)}
+    items[id]=1;
+  }
+  if(items.xsy||items.dsy){delete items.zhong;delete items.fa;delete items.bai}
+  if(items.xsx||items.dsx){delete items.quanfeng;delete items.menfeng}
+  d.items=items;d.adj=0;
+  d.hua=Math.max(0,Math.min(2,Math.round(+r.hua||0)));
+  d.huagang=Math.max(0,Math.min(2,Math.round(+r.huagang||0)));
+  return Object.keys(items).filter(k=>k!=="zimo").length;
+}
+function resetPhoto(){$("photoRes").hidden=true;$("photoLabel").classList.remove("busy");$("photoRetry").hidden=true}
+function photoErrMsg(e){
+  const m=String(e&&(e.code||e.message)||e);
+  if(/app-check|appcheck|recaptcha/i.test(m))return "安全驗證沒有通過，請關掉再重新打開一次。";
+  if(/quota|429|exhausted|rate/i.test(m))return "今天的免費辨識次數用完了，請先手動點選台型。";
+  if(/network|fetch|failed to load|import/i.test(m))return "網路不穩，請再拍一次。";
+  if(/JSON/i.test(m))return "這張看不清楚，請靠近一點、光線亮一點再拍一次。";
+  return "辨識失敗，請再拍一次，或直接手動點選。";
+}
+$("photoInput").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value="";
+  if(!f||photoBusy||draft.winner==null)return;
+  photoBusy=true;
+  const lbl=$("photoLabel"),st=$("photoStatus"),tl=$("photoTiles");
+  $("photoRes").hidden=false;$("photoRetry").hidden=true;tl.textContent="";
+  try{$("photoImg").src=URL.createObjectURL(f)}catch(err){}
+  lbl.classList.add("busy");st.textContent="正在看牌，大約 5 到 20 秒…";
+  try{
+    const b64=await shrinkImage(f);
+    const r=await recognize(b64,JSON.parse(JSON.stringify(draft)))||{};
+    const n=applyPhoto(r);renderTaiStep();
+    const low=r.confidence==="low";
+    st.innerHTML=low?`<span class="bad">看不太清楚，只勾了 ${n} 項，共 ${baseTai(draft)} 台</span>　請對一下下面的勾選`:`<span class="ok">算出 ${baseTai(draft)} 台（勾了 ${n} 項）</span>　請對一下下面的勾選，錯了直接點掉`;
+    tl.textContent=[r.tiles?"辨識到："+r.tiles:"",r.note?"備註："+r.note:""].filter(Boolean).join("\n");
+  }catch(err){
+    console.warn("拍照辨識失敗",err);
+    st.innerHTML=`<span class="bad">${photoErrMsg(err)}</span>`;
+  }finally{photoBusy=false;lbl.classList.remove("busy");$("photoRetry").hidden=false}
+});
+$("photoRetry").addEventListener("click",()=>$("photoInput").click());
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})})}
 start();
